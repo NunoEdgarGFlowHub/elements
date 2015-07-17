@@ -251,7 +251,7 @@ static void MutateTxAddInput(CMutableTransaction& tx, const string& strInput)
     // append to transaction input list
     CTxIn txin(txid, vout, CScript(), nSequence);
     tx.vin.push_back(txin);
-    tx.nTxFee += value;
+    // tx.nTxFee += value;
 }
 
 static void MutateTxAddOutAddr(CMutableTransaction& tx, const string& strInput)
@@ -284,7 +284,7 @@ static void MutateTxAddOutAddr(CMutableTransaction& tx, const string& strInput)
         CPubKey pubkey = addr.GetBlindingKey();
         txout.nValue.vchNonceCommitment = std::vector<unsigned char>(pubkey.begin(), pubkey.end());
     }
-    tx.nTxFee -= value;
+    // tx.nTxFee -= value;
     tx.vout.push_back(txout);
 }
 
@@ -353,7 +353,7 @@ static void MutateTxAddOutScript(CMutableTransaction& tx, const string& strInput
     // construct TxOut, append to transaction output list
     CTxOut txout(value, scriptPubKey);
     tx.vout.push_back(txout);
-    tx.nTxFee -= value;
+    // tx.nTxFee -= value;
 }
 
 static void MutateTxDelInput(CMutableTransaction& tx, const string& strInIdx)

@@ -187,7 +187,7 @@ public:
         SetNull();
     }
 
-    CTxOut(const CTxOutValue& valueIn, CScript scriptPubKeyIn);
+    CTxOut(const CTxOutValue& valueIn, CScript scriptPubKeyIn, CAssetID assetID=CAssetID());
 
     ADD_SERIALIZE_METHODS;
 

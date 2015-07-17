@@ -148,10 +148,9 @@ std::string CTxIn::ToString() const
     return str;
 }
 
-CTxOut::CTxOut(const CTxOutValue& valueIn, CScript scriptPubKeyIn)
+CTxOut::CTxOut(const CTxOutValue& valueIn, CScript scriptPubKeyIn, CAssetID assetIDIn) 
+    : nValue(valueIn), assetID(assetIDIn), scriptPubKey(scriptPubKeyIn)
 {
-    nValue = valueIn;
-    scriptPubKey = scriptPubKeyIn;
 }
 
 std::string CTxOut::ToString() const

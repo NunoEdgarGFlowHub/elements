@@ -12,6 +12,7 @@
 #include "main.h"
 #include "merkleblock.h"
 #include "net.h"
+#include "policy/fees.h"
 #include "rpcserver.h"
 #include "script/script.h"
 #include "script/sign.h"
@@ -62,7 +63,7 @@ void TxToJSON(const CTransaction& tx, const uint256 hashBlock, Object& entry)
     entry.push_back(Pair("txid", tx.GetHash().GetHex()));
     entry.push_back(Pair("version", tx.nVersion));
     entry.push_back(Pair("locktime", (int64_t)tx.nLockTime));
-    entry.push_back(Pair("fee", ValueFromAmount(tx.nTxFee)));
+    entry.push_back(Pair("fee", ValueFromAmount(tx.GetFee(feeAssetID)))); // TODO improve ?
     Array vin;
     BOOST_FOREACH(const CTxIn& txin, tx.vin) {
         Object in;
@@ -466,12 +467,19 @@ Value createrawtransaction(const Array& params, bool fHelp)
             "         \"txid\":\"id\",  (string, required) The transaction id\n"
             "         \"vout\":n        (numeric, required) The output number\n"
             "         \"nValue\":x.xxx, (numeric, required) The amount being spent\n"
+            "         \"assetid\":\"id\",(string, optional) The assetID of the input being spent (-feeasset by default)\n"
             "       }\n"
             "       ,...\n"
             "     ]\n"
             "2. \"addresses\"           (string, required) a json object with addresses as keys and amounts as values\n"
             "    {\n"
             "      \"address\": x.xxx   (numeric, required) The key is the bitcoin address, the value is the btc amount\n"
+            "      ,...\n"
+            "    }\n"
+            "3. \"output asset ids\"    (object, optional) a json object with addresses as keys and asset ids as values\n"
+            "                                              All addresses not contained here default to -feeasset\n"
+            "    {\n"
+            "      \"address\": \"id\"  (string, optional) The key is the bitcoin address, the value is the asset id\n"
             "      ,...\n"
             "    }\n"
 
@@ -487,10 +495,14 @@ Value createrawtransaction(const Array& params, bool fHelp)
 
     Array inputs = params[0].get_array();
     Object sendTo = params[1].get_obj();
+    Object sendToAssets;
+    if (params.size() > 2) {
+        sendToAssets = params[2].get_obj();
+    }
 
     CMutableTransaction rawTx;
-
-    CAmount inputValue = 0;
+    CAmountMap mInputValues;
+    CAmountMap mOutputValues;
 
     BOOST_FOREACH(const Value& input, inputs) {
         const Object& o = input.get_obj();
@@ -504,14 +516,18 @@ Value createrawtransaction(const Array& params, bool fHelp)
         if (nOutput < 0)
             throw JSONRPCError(RPC_INVALID_PARAMETER, "Invalid parameter, vout must be positive");
 
+        CAssetID assetID = feeAssetID;
+        if (params.size() > 2) {
+            try {
+                assetID = ParseHashO(o, "assetid");
+            } catch (...) {};
+        }
         const Value& vout_value = find_value(o, "nValue");
-        inputValue += AmountFromValue(vout_value);
+        mInputValues[assetID] += AmountFromValue(vout_value);
 
         CTxIn in(COutPoint(txid, nOutput));
         rawTx.vin.push_back(in);
     }
-
-    CAmount outputValue = 0;
 
     set<CBitcoinAddress> setAddress;
     BOOST_FOREACH(const Pair& s, sendTo) {
@@ -525,9 +541,12 @@ Value createrawtransaction(const Array& params, bool fHelp)
 
         CScript scriptPubKey = GetScriptForDestination(address.Get());
         CAmount nAmount = AmountFromValue(s.value_);
-        outputValue += nAmount;
+        CAssetID assetID = feeAssetID;
+        if (params.size() > 2)
+            assetID = ParseHashO(sendToAssets, s.name_);
+        mOutputValues[assetID] += nAmount;
 
-        CTxOut out(nAmount, scriptPubKey);
+        CTxOut out(nAmount, scriptPubKey, assetID);
         if (address.IsBlinded()) {
             CPubKey confidentiality_pubkey = address.GetBlindingKey();
             if (!confidentiality_pubkey.IsValid())
@@ -537,7 +556,9 @@ Value createrawtransaction(const Array& params, bool fHelp)
         rawTx.vout.push_back(out);
     }
 
-    rawTx.nTxFee = inputValue - outputValue;
+    CAmountMap mTxReward = mInputValues;
+    mTxReward -= mOutputValues;
+    rawTx.SetFeesFromTxRewardMap(mTxReward);
 
     return EncodeHexTx(rawTx);
 }
